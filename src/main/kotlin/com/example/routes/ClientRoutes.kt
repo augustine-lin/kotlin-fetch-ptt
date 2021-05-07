@@ -1,16 +1,16 @@
 package com.example.routes
 
 import com.example.Object.HTMLParser
-import com.example.models.Customer
 import com.example.models.SubscriptionRequest
 import com.example.models.SubscriptionResponse
-import com.example.models.customerStorage
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.ktor.application.*
 import io.ktor.routing.*
 
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.features.json.*
 import io.ktor.client.features.logging.*
 import io.ktor.http.*
 import io.ktor.request.*
@@ -19,14 +19,17 @@ import io.ktor.response.*
 
 val client = HttpClient(CIO) {
     install(Logging)
+    install(JsonFeature) {
+        serializer = JacksonSerializer()
+    }
 }
 
-suspend fun search (subscription: SubscriptionRequest): List<SubscriptionResponse> {
+suspend fun search(subscription: SubscriptionRequest): List<SubscriptionResponse> {
     val response: String = client.get("https://www.ptt.cc/bbs/${subscription.boardName.toUpperCase()}/index.html")
     val elements = HTMLParser.getElementsByClass(response, "r-ent")
         .filter {
             var isMatch = true
-            if (subscription.keyword !== null){
+            if (subscription.keyword !== null) {
                 val title = it.getElementsByClass("title")
                 isMatch = title.text().contains(subscription.keyword)
             }
@@ -34,7 +37,7 @@ suspend fun search (subscription: SubscriptionRequest): List<SubscriptionRespons
         }
         .filter {
             var isMatch = true
-            if (subscription.author !== null){
+            if (subscription.author !== null) {
                 val author = it.getElementsByClass("author")
                 isMatch = author.text().equals(subscription.author)
             }
@@ -58,8 +61,15 @@ suspend fun search (subscription: SubscriptionRequest): List<SubscriptionRespons
     return responseData
 }
 
-fun Route.clientRouting(){
-    route("/client"){
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TelegramChatData(val id: Int)
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TelegramMessage(val chat: TelegramChatData)
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TelegramData(val update_id: String, val message: TelegramMessage)
+
+fun Route.clientRouting() {
+    route("/client") {
         get {
             val response: String = client.get("https://www.ptt.cc/bbs/DIABLO/index.html") {
                 // Configure request parameters exposed by HttpRequestBuilder
@@ -94,6 +104,19 @@ fun Route.clientRouting(){
                 call.respondText("not found", status = HttpStatusCode.NotFound)
             }
 
+        }
+
+
+        post("/webhook") {
+            try {
+                val req = call.receive<String>()
+                println(req)
+                call.respond(HttpStatusCode.OK)
+            } catch (e: Exception) {
+                println(e)
+                // handler
+                call.respond(HttpStatusCode.OK)
+            }
         }
     }
 }
